@@ -16,12 +16,9 @@ api_key = os.getenv("API_KEY")
 #Variable para trackear los headers(nombre de las columnas) en el archivo csv y cargarlos solo una vez
 headers_written = False
 key_columns = []
-
-
 #Creamos el directorio para guardar los archivos csv
 directory_path = "data_analytics/openweather"
 os.makedirs(directory_path, exist_ok = True)
-
 # Función para obtener los datos de clima de una ciudad y convertirlos a CSV
 def get_weather_data(city, coordinates):
     params = {
@@ -34,29 +31,29 @@ def get_weather_data(city, coordinates):
         data = response.json()
         df = json_normalize(data)
         df_weather = json_normalize(data, record_path="weather")        
-        df = df.drop(columns=["weather"])         
+        df = df.drop(columns=["weather"])                
         date_str = datetime.utcfromtimestamp(data["dt"]).strftime('%Y%m%d')
-        file_path = f"data_analytics/openweather/tiempodiario_{date_str}.csv"
-        if not headers_written:          
-          df = pd.concat([df_weather,df], axis=1)
-          df["city"] = city          
-          df.to_csv(file_path, index=False, mode="a")
-          headers_written = True
+        file_path = f"data_analytics/openweather/tiempodiario_{date_str}.csv"                
+        if not headers_written:                            
+            df = pd.concat([df_weather,df], axis=1)                    
+            df.to_csv(file_path, index=False, mode="a")
+            headers_written = True          
+            #Guardamos las columnas de la 1er respuesta,
+            # ya que hay variaciones en la respuesta de la API
+            key_columns = df.columns.tolist()      
+            print(key_columns)    
+            print(f"Datos de clima de {city} almacenados en {file_path}. Con headers")
           
-          #Guardamos las columnas de la 1er respuesta,
-          # ya que hay variaciones en la respuesta de la API
-          key_columns = df.columns.tolist()
-          print(f"Datos de clima de {city} almacenados en {file_path}. Con headers")
-        else:          
-          # Si no esta dentro de las columnas de la 1er respuesta, dropeamos columnas extra
-          # para tener consistencia en el archivo csv          
-          columns_to_drop = [col for col in df.columns if col not in key_columns]
-          df = df.drop(columns=columns_to_drop)          
-          df = pd.concat([df_weather,df], axis=1)
-          df["city"] = city
-          print(df.shape)
-          df.to_csv(file_path, index=False, mode="a", header=False)
-          print(f"Datos de clima de {city} almacenados en {file_path}.")
+        else:                    
+            # Si no esta dentro de las columnas de la 1er respuesta, dropeamos columnas extra
+            # para tener consistencia en el archivo csv          
+            columns_to_drop = [col for col in df.columns if col not in key_columns]
+            print(columns_to_drop)
+            df = df.drop(columns=columns_to_drop)          
+            df = pd.concat([df_weather,df], axis=1)        
+            df.to_csv(file_path, index=False, mode="a", header=False)
+            print(f"Datos de clima de {city} almacenados en {file_path}.")
+            print(df.shape)
     else:
         print(f"Error al obtener los datos de clima de {city}.", response.status_code)
 
@@ -78,7 +75,19 @@ engine = create_engine(config.SQLALCHEMY_DATABASE_URI)
 
 # Función para cargar datos de CSV a la base de datos
 def load_data_to_database(csv_path):
-    df = pd.read_csv(csv_path)
+    column_mapping = {
+        'name': 'city',
+        'main.temp': 'temperature',
+        'main.humidity': 'humidity',
+        'wind.speed': 'wind_speed',
+        'dt': 'date'
+    }
+    subset_columns = list(column_mapping.keys())    
+    df = pd.read_csv(csv_path, usecols=subset_columns)    
+     # Convert Unix timestamp to pandas datetime object
+    df['dt'] = pd.to_datetime(df['dt'], unit='s', utc=True)
+    # Rename the columns using the mapping
+    df.rename(columns=column_mapping, inplace=True)         
     table_name = "weather_data"
     df.to_sql(table_name, engine, if_exists="append", index=False)
     print(f"Datos cargados en la tabla '{table_name}'.")
@@ -95,3 +104,4 @@ for filename in os.listdir(directory_path):
 for csv_path in csv_paths:
     load_data_to_database(csv_path)
     print("load succesful")
+    
