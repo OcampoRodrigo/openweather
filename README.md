@@ -12,5 +12,4 @@ information for our project in a csv. 🔍💻
 - **main_py**: Uses the functiones defined above to save the current weather into the database for a pre-defined list of cities.
 - **app.py**: Handles all the routes in the application.
 
-## How to run this project locally on your machine
-### Step 1:
+
